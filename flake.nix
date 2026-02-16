@@ -19,15 +19,23 @@
           inherit system;
         };
         craneLib = crane.mkLib pkgs;
-        src = craneLib.cleanCargoSource ./.;
+        src = pkgs.lib.cleanSourceWith {
+          src = ./.;
+          filter = path: type:
+            (craneLib.filterCargoSources path type)
+            || (pkgs.lib.hasSuffix ".svg" (toString path));
+        };
 
         commonArgs = {
           inherit src;
           strictDeps = true;
           nativeBuildInputs = with pkgs; [
+            makeWrapper
             pkg-config
           ];
           buildInputs = with pkgs; [
+            gtk3
+            libappindicator-gtk3
             libx11
             libxi
             libxtst
@@ -42,7 +50,14 @@
           // {
             inherit cargoArtifacts;
             pname = "slykey";
-            version = "0.1.5";
+            version = "0.2.2";
+            postFixup = ''
+              wrapProgram "$out/bin/slykey" \
+                --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath [
+                  pkgs.libappindicator-gtk3
+                  pkgs.gtk3
+                ]}"
+            '';
           }
         );
       in {
@@ -63,9 +78,11 @@
             cargo-audit
             cargo-deny
             cargo-expand
+            libappindicator-gtk3
             libx11
             libxi
             libxtst
+            gtk3
             xdotool
             pkg-config
           ];

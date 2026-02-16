@@ -10,7 +10,9 @@ It listens globally for trigger strings and replaces them with configured expans
 
 - Global trigger detection on X11
 - YAML-based expansion config
-- Expansion macros for keys and delays
+- Expansion action macros (keys, delays, caret movement)
+- Template macros for datetime (`DATETIME`, `DATE`, `TIME`) and Linux commands (`CMD`)
+- Configurable global template macros (`globals`)
 - Nix flake packaging
 - Home Manager module with declarative expansions
 
@@ -83,27 +85,34 @@ If both exist, the CWD config takes precedence.
 ### Config schema
 
 ```yaml
+watch: false # optional, auto-reload config when file changes
 match_behavior: immediate # immediate | boundary
 boundary_chars: " \t\n.,;:!?)]}>'\"" # optional
+notifications: # optional desktop notifications via D-Bus
+  on_expansion: false
+  on_snippet_copy: false
+globals: # optional template macro definitions
+  SIGNOFF: "Thanks, Tyler{{KEY:ENTER}}"
+  TODAY_NOTE: "Generated on {{DATE}}"
 expansions:
   - trigger: "tg@"
     expansion: "tylergetsay@gmail.com"
   - trigger: "sig;"
-    expansion: "Thanks, Tyler{{KEY:ENTER}}"
+    expansion: "{{SIGNOFF}}"
+snippets: # optional tray menu clipboard items
+  - title: "Personal email"
+    content: "tylergetsay@gmail.com"
+  - title: "Address"
+    content: "123 Main St ({{TODAY_NOTE}})"
 ```
 
-Validation rules:
+### Expansion action macros
 
-- `expansions` must not be empty
-- each `trigger` must be non-empty
-- `trigger` values must be unique
-
-### Expansion macros
-
-Supported macro forms inside `expansion`:
+Supported action macros inside `expansion`:
 
 - `{{KEY:...}}` for key presses
 - `{{SLEEP_MS:...}}` for timing pauses
+- `{{MOVE_CARET:...}}` for caret movement steps
 
 Examples:
 
@@ -113,8 +122,38 @@ Examples:
 - `{{KEY:BACKSPACE}}`
 - arrow keys, home/end, delete, page keys, `F1..F12`
 - `{{SLEEP_MS:100}}`
+- `{{MOVE_CARET:-5}}` (left 5), `{{MOVE_CARET:3}}` (right 3)
 
 Any non-macro text in `expansion` is typed literally.
+
+### Notifications
+
+Desktop notifications are optional and sent through `org.freedesktop.Notifications` over the session D-Bus:
+
+- `notifications.on_expansion`: notify when a trigger expansion fires
+- `notifications.on_snippet_copy`: notify when a tray snippet is copied to clipboard
+
+### Config auto-reload
+
+Set `watch: true` to watch the loaded config file and hot-reload expansions when it changes.
+
+### Template macros
+
+Template macros work in `expansion`, `snippets[].content`, and `globals` values:
+
+- `{{DATETIME}}` -> local datetime (`YYYY-MM-DD HH:MM:SS`)
+- `{{DATE}}` -> local date (`YYYY-MM-DD`)
+- `{{TIME}}` -> local time (`HH:MM:SS`)
+- `{{CMD:<linux shell command>}}` -> command stdout with trailing newlines trimmed
+
+`globals` entries become new template macros. Macro names are case-insensitive and can reference other globals, e.g. `{{SIGNOFF}}` or `{{today_note}}`.
+
+Examples:
+
+- `Meeting on {{DATE}} at {{TIME}}`
+- `Generated {{DATETIME}}`
+- `Git branch: {{CMD:git branch --show-current}}`
+- `globals: { SIGNOFF: "Thanks, Tyler{{KEY:ENTER}}" }`
 
 ## Home Manager module
 
@@ -124,7 +163,7 @@ This flake exports a module at `homeManagerModules.default`.
 
 ```nix
 {
-  inputs.slykey.url = "path:/path/to/slykey";
+  inputs.slykey.url = "github:tylergets/slykey";
 
   outputs = { nixpkgs, home-manager, slykey, ... }: {
     homeConfigurations.me = home-manager.lib.homeManagerConfiguration {
@@ -145,10 +184,29 @@ This flake exports a module at `homeManagerModules.default`.
               }
             ];
 
+            snippets = [
+              {
+                title = "Personal email";
+                content = "tylergetsay@gmail.com";
+              }
+              {
+                title = "Address";
+                content = "123 Main St";
+              }
+            ];
+
+            globals = {
+              SIGNOFF = "Thanks, Tyler{{KEY:ENTER}}";
+            };
+
             # Optional:
             # package = slykey.packages.x86_64-linux.default;
             matchBehavior = "immediate"; # or "boundary"
             # boundaryChars = " \t\n.,;:!?)]}>'\"";
+            # notifications = {
+            #   onExpansion = true;
+            #   onSnippetCopy = true;
+            # };
           };
         }
       ];

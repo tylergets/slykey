@@ -67,6 +67,16 @@ impl OutputSink for X11RdevBackend {
                 OutputAction::SleepMs(ms) => {
                     std::thread::sleep(Duration::from_millis(*ms));
                 }
+                OutputAction::MoveCaret(amount) => {
+                    let key = if *amount < 0 {
+                        EnigoKey::LeftArrow
+                    } else {
+                        EnigoKey::RightArrow
+                    };
+                    for _ in 0..amount.unsigned_abs() {
+                        tap_key(&mut enigo, key)?;
+                    }
+                }
             }
         }
         self.injecting.store(false, Ordering::Relaxed);

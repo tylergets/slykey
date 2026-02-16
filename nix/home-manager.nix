@@ -6,16 +6,30 @@
 }: let
   cfg = config.programs.slykey;
   yaml = pkgs.formats.yaml {};
-  generatedConfig =
-    yaml.generate "slykey-config.yaml" ({
-        expansions = cfg.expansions;
-      }
-      // lib.optionalAttrs (cfg.matchBehavior != null) {
-        match_behavior = cfg.matchBehavior;
-      }
-      // lib.optionalAttrs (cfg.boundaryChars != null) {
-        boundary_chars = cfg.boundaryChars;
-      });
+  generatedConfig = yaml.generate "slykey-config.yaml" ({
+      expansions = cfg.expansions;
+    }
+    // lib.optionalAttrs (cfg.snippets != []) {
+      snippets = cfg.snippets;
+    }
+    // lib.optionalAttrs (cfg.matchBehavior != null) {
+      match_behavior = cfg.matchBehavior;
+    }
+    // lib.optionalAttrs (cfg.boundaryChars != null) {
+      boundary_chars = cfg.boundaryChars;
+    }
+    // lib.optionalAttrs (cfg.globals != {}) {
+      globals = cfg.globals;
+    }
+    // lib.optionalAttrs (cfg.notifications != null) {
+      notifications =
+        lib.optionalAttrs (cfg.notifications.onExpansion) {
+          on_expansion = true;
+        }
+        // lib.optionalAttrs (cfg.notifications.onSnippetCopy) {
+          on_snippet_copy = true;
+        };
+    });
 in {
   options.programs.slykey = {
     enable = lib.mkEnableOption "slykey text expansion service";
@@ -46,6 +60,25 @@ in {
       description = "Expansion rules written into the generated slykey YAML config.";
     };
 
+    snippets = lib.mkOption {
+      type = lib.types.listOf (lib.types.submodule {
+        options = {
+          title = lib.mkOption {
+            type = lib.types.str;
+            description = "Menu item label shown in the tray context menu.";
+            example = "Work email";
+          };
+          content = lib.mkOption {
+            type = lib.types.str;
+            description = "Text copied to clipboard when this menu item is clicked.";
+            example = "tyler@company.com";
+          };
+        };
+      });
+      default = [];
+      description = "Optional clipboard snippets exposed in the tray context menu.";
+    };
+
     matchBehavior = lib.mkOption {
       type = lib.types.nullOr (lib.types.enum [
         "immediate"
@@ -59,6 +92,34 @@ in {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Optional boundary character set used when matchBehavior is boundary.";
+    };
+
+    globals = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = {};
+      description = "Template macro globals, keyed by macro name.";
+      example = {
+        SIGNOFF = "Thanks, Tyler{{KEY:ENTER}}";
+      };
+    };
+
+    notifications = lib.mkOption {
+      type = lib.types.nullOr (lib.types.submodule {
+        options = {
+          onExpansion = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Send a desktop notification when an expansion fires.";
+          };
+          onSnippetCopy = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Send a desktop notification when a tray snippet is copied.";
+          };
+        };
+      });
+      default = null;
+      description = "Optional desktop notification settings.";
     };
   };
 

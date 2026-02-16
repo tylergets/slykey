@@ -1,15 +1,18 @@
 [package]
 name = "slykey"
-version = "0.1.5"
+version = "0.2.2"
 edition = "2021"
 license = "MIT"
 
 [dependencies]
 anyhow = "1"
+chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
+dbus = "0.9"
 dirs = "6"
 enigo = "0.2"
-ksni = { version = "0.3", features = ["blocking"] }
+gtk = "0.18.2"
+libappindicator = "0.9.0"
 rdev = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"

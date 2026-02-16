@@ -6,6 +6,8 @@ use crate::config::{AppConfig, MatchBehavior};
 use crate::core::expansion::{parse_expansion_actions, OutputAction};
 use crate::io::events::{KeyEvent, KeyEventKind, SpecialInputKey};
 use crate::io::output::{OutputSink, SpecialKey};
+#[cfg(target_os = "linux")]
+use crate::platform::dbus_notification;
 
 pub struct Engine {
     config: AppConfig,
@@ -43,6 +45,18 @@ impl Engine {
 
     pub fn set_output(&mut self, output: Arc<dyn OutputSink>) {
         self.output = Some(output);
+    }
+
+    pub fn reload_config(&mut self, config: AppConfig) {
+        self.max_trigger_chars = config
+            .expansions
+            .iter()
+            .map(|r| r.trigger.chars().count())
+            .max()
+            .unwrap_or(0);
+        self.config = config;
+        self.typed_buffer.clear();
+        self.pending_expansion = None;
     }
 
     pub fn handle_event(&mut self, event: KeyEvent) -> Result<()> {
@@ -153,11 +167,12 @@ impl Engine {
                     "trigger detected (immediate): '{}' -> expansion fired",
                     rule.trigger
                 );
-                let actions = parse_expansion_actions(&rule.expansion)?;
+                let actions = parse_expansion_actions(&rule.expansion, &self.config.globals)?;
                 self.dispatch_or_defer_expansion(
                     self.typed_buffer.clone(),
                     rule.trigger.chars().count(),
                     actions,
+                    Some(format!("Expanded {}", rule.trigger)),
                 )?;
                 break;
             }
@@ -188,7 +203,7 @@ impl Engine {
                     "trigger detected (boundary): '{}' at {} -> expansion fired",
                     rule.trigger, boundary
                 );
-                let mut actions = parse_expansion_actions(&rule.expansion)?;
+                let mut actions = parse_expansion_actions(&rule.expansion, &self.config.globals)?;
                 if let Some(c) = typed_boundary_char {
                     actions.push(OutputAction::Text(c.to_string()));
                 }
@@ -200,7 +215,12 @@ impl Engine {
 
                 let delete_count = rule.trigger.chars().count()
                     + usize::from(typed_boundary_char.is_some() || typed_boundary_key.is_some());
-                self.dispatch_or_defer_expansion(self.typed_buffer.clone(), delete_count, actions)?;
+                self.dispatch_or_defer_expansion(
+                    self.typed_buffer.clone(),
+                    delete_count,
+                    actions,
+                    Some(format!("Expanded {}", rule.trigger)),
+                )?;
                 break;
             }
         }
@@ -213,18 +233,20 @@ impl Engine {
         expected_buffer: String,
         backspaces: usize,
         mut actions: Vec<OutputAction>,
+        notification_body: Option<String>,
     ) -> Result<()> {
         if self.active_modifiers.any_active() {
             self.pending_expansion = Some(PendingExpansion {
                 expected_buffer,
                 backspaces,
                 actions,
+                notification_body,
             });
             return Ok(());
         }
 
         self.pending_expansion = None;
-        self.execute_expansion(backspaces, &mut actions)
+        self.execute_expansion(backspaces, &mut actions, notification_body.as_deref())
     }
 
     fn flush_pending_expansion_if_ready(&mut self) -> Result<()> {
@@ -240,18 +262,33 @@ impl Engine {
             return Ok(());
         }
 
-        self.execute_expansion(pending.backspaces, &mut pending.actions)
+        self.execute_expansion(
+            pending.backspaces,
+            &mut pending.actions,
+            pending.notification_body.as_deref(),
+        )
     }
 
     fn execute_expansion(
         &mut self,
         backspaces: usize,
         actions: &mut [OutputAction],
+        notification_body: Option<&str>,
     ) -> Result<()> {
         if let Some(output) = &self.output {
             output.send_backspaces(backspaces)?;
             output.send_actions(actions)?;
         }
+
+        #[cfg(target_os = "linux")]
+        if self.config.notifications.on_expansion {
+            if let Some(body) = notification_body {
+                if let Err(err) = dbus_notification::send_notification("slykey", body) {
+                    eprintln!("failed to send expansion notification: {err}");
+                }
+            }
+        }
+
         self.typed_buffer.clear();
         Ok(())
     }
@@ -297,16 +334,18 @@ struct PendingExpansion {
     expected_buffer: String,
     backspaces: usize,
     actions: Vec<OutputAction>,
+    notification_body: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
     use anyhow::Result;
 
     use super::Engine;
-    use crate::config::{AppConfig, ExpansionRule, MatchBehavior};
+    use crate::config::{AppConfig, ExpansionRule, MatchBehavior, NotificationConfig};
     use crate::core::expansion::OutputAction;
     use crate::io::events::{KeyEvent, KeyEventKind, SpecialInputKey};
     use crate::io::output::OutputSink;
@@ -365,8 +404,12 @@ mod tests {
                 trigger: ";g".to_string(),
                 expansion: "hello".to_string(),
             }],
+            snippets: vec![],
+            globals: HashMap::new(),
+            notifications: NotificationConfig::default(),
             match_behavior,
             boundary_chars: None,
+            watch: false,
         }
     }
 
@@ -376,8 +419,12 @@ mod tests {
         let mut engine = Engine::new(test_config(MatchBehavior::Immediate));
         engine.set_output(sink.clone());
 
-        engine.handle_event(press_char(';')).expect("event should work");
-        engine.handle_event(press_char('g')).expect("event should work");
+        engine
+            .handle_event(press_char(';'))
+            .expect("event should work");
+        engine
+            .handle_event(press_char('g'))
+            .expect("event should work");
 
         let backspaces = sink.backspaces.lock().expect("mutex poisoned");
         assert_eq!(&*backspaces, &[2]);
@@ -399,17 +446,27 @@ mod tests {
                 trigger: "tg@".to_string(),
                 expansion: "tylergetsay@gmail.com".to_string(),
             }],
+            snippets: vec![],
+            globals: HashMap::new(),
+            notifications: NotificationConfig::default(),
             match_behavior: MatchBehavior::Immediate,
             boundary_chars: None,
+            watch: false,
         });
         engine.set_output(sink.clone());
 
-        engine.handle_event(press_char('t')).expect("event should work");
-        engine.handle_event(press_char('g')).expect("event should work");
+        engine
+            .handle_event(press_char('t'))
+            .expect("event should work");
+        engine
+            .handle_event(press_char('g'))
+            .expect("event should work");
         engine
             .handle_event(press_special(SpecialInputKey::Shift))
             .expect("event should work");
-        engine.handle_event(press_char('@')).expect("event should work");
+        engine
+            .handle_event(press_char('@'))
+            .expect("event should work");
 
         {
             let backspaces = sink.backspaces.lock().expect("mutex poisoned");
