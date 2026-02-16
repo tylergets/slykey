@@ -94,6 +94,10 @@ impl Engine {
     fn try_expand_immediate(&mut self) -> Result<()> {
         for rule in &self.config.expansions {
             if self.typed_buffer.ends_with(&rule.trigger) {
+                eprintln!(
+                    "trigger detected (immediate): '{}' -> expansion fired",
+                    rule.trigger
+                );
                 let mut actions = parse_expansion_actions(&rule.expansion)?;
                 self.execute_expansion(rule.trigger.chars().count(), &mut actions)?;
                 break;
@@ -114,6 +118,17 @@ impl Engine {
 
         for rule in &self.config.expansions {
             if candidate.ends_with(&rule.trigger) {
+                let boundary = if let Some(c) = typed_boundary_char {
+                    format!("char '{}'", c)
+                } else if let Some(key) = typed_boundary_key {
+                    format!("key {:?}", key)
+                } else {
+                    "none".to_string()
+                };
+                eprintln!(
+                    "trigger detected (boundary): '{}' at {} -> expansion fired",
+                    rule.trigger, boundary
+                );
                 let mut actions = parse_expansion_actions(&rule.expansion)?;
                 if let Some(c) = typed_boundary_char {
                     actions.push(OutputAction::Text(c.to_string()));

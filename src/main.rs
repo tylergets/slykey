@@ -12,6 +12,8 @@ use clap::Parser;
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
 use crate::core::engine::Engine;
+#[cfg(target_os = "linux")]
+use crate::platform::app_indicator;
 use crate::platform::x11_rdev::X11RdevBackend;
 
 fn main() -> Result<()> {
@@ -30,6 +32,9 @@ fn run(config_path_override: Option<std::path::PathBuf>) -> Result<()> {
 
     println!("Loaded config from {}", loaded.path.display());
     println!("Listening on X11 backend (rdev)...");
+
+    #[cfg(target_os = "linux")]
+    let _app_indicator = app_indicator::start();
 
     let backend = Arc::new(X11RdevBackend::new()?);
     let mut engine = Engine::new(config);

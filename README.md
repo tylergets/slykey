@@ -1,6 +1,8 @@
 # slykey
 
-`slykey` is a minimal global text expansion CLI for Linux X11 (tested target: i3).
+`slykey` is a small global text expansion CLI for Linux X11 (mainly used on i3).
+
+This project is an eternal work in progress, built for my personal setup and day-to-day use. PRs are welcome, especially for support in other desktop environments.
 
 It listens globally for trigger strings and replaces them with configured expansion text or macro sequences.
 

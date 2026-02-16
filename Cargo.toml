@@ -8,6 +8,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 enigo = "0.2"
+ksni = { version = "0.3", features = ["blocking"] }
 rdev = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
