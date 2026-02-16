@@ -1,0 +1,6 @@
+match_behavior: immediate
+expansions:
+  - trigger: "tg@"
+    expansion: "tylergetsay@gmail.com"
+  - trigger: "sig;"
+    expansion: "Thanks, Tyler{{KEY:ENTER}}"
