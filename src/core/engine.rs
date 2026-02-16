@@ -12,6 +12,8 @@ pub struct Engine {
     output: Option<Arc<dyn OutputSink>>,
     typed_buffer: String,
     max_trigger_chars: usize,
+    active_modifiers: ActiveModifiers,
+    pending_expansion: Option<PendingExpansion>,
     debug: bool,
 }
 
@@ -29,6 +31,8 @@ impl Engine {
             output: None,
             typed_buffer: String::new(),
             max_trigger_chars,
+            active_modifiers: ActiveModifiers::default(),
+            pending_expansion: None,
             debug: false,
         }
     }
@@ -42,21 +46,26 @@ impl Engine {
     }
 
     pub fn handle_event(&mut self, event: KeyEvent) -> Result<()> {
-        if event.kind != KeyEventKind::Press {
-            return Ok(());
-        }
-
         if event.is_injected {
             return Ok(());
         }
 
-        if let Some(c) = event.printable {
-            self.on_printable_char(c)?;
-            return Ok(());
-        }
+        match event.kind {
+            KeyEventKind::Press => {
+                if let Some(c) = event.printable {
+                    self.on_printable_char(c)?;
+                    return Ok(());
+                }
 
-        if let Some(key) = event.special {
-            self.on_special_key(key)?;
+                if let Some(key) = event.special {
+                    self.on_special_key_press(key)?;
+                }
+            }
+            KeyEventKind::Release => {
+                if let Some(key) = event.special {
+                    self.on_special_key_release(key)?;
+                }
+            }
         }
 
         Ok(())
@@ -101,16 +110,16 @@ impl Engine {
         None
     }
 
-    fn on_special_key(&mut self, key: SpecialInputKey) -> Result<()> {
+    fn on_special_key_press(&mut self, key: SpecialInputKey) -> Result<()> {
         match key {
             SpecialInputKey::Backspace => {
                 self.typed_buffer.pop();
             }
-            SpecialInputKey::Shift
-            | SpecialInputKey::Ctrl
-            | SpecialInputKey::Alt
-            | SpecialInputKey::Meta
-            | SpecialInputKey::CapsLock => {}
+            SpecialInputKey::Shift => self.active_modifiers.shift = true,
+            SpecialInputKey::Ctrl => self.active_modifiers.ctrl = true,
+            SpecialInputKey::Alt => self.active_modifiers.alt = true,
+            SpecialInputKey::Meta => self.active_modifiers.meta = true,
+            SpecialInputKey::CapsLock => {}
             SpecialInputKey::Enter | SpecialInputKey::Tab => {
                 if self.config.match_behavior == MatchBehavior::Boundary {
                     self.try_expand_boundary(None, Some(key))?;
@@ -125,6 +134,18 @@ impl Engine {
         Ok(())
     }
 
+    fn on_special_key_release(&mut self, key: SpecialInputKey) -> Result<()> {
+        match key {
+            SpecialInputKey::Shift => self.active_modifiers.shift = false,
+            SpecialInputKey::Ctrl => self.active_modifiers.ctrl = false,
+            SpecialInputKey::Alt => self.active_modifiers.alt = false,
+            SpecialInputKey::Meta => self.active_modifiers.meta = false,
+            _ => return Ok(()),
+        }
+
+        self.flush_pending_expansion_if_ready()
+    }
+
     fn try_expand_immediate(&mut self) -> Result<()> {
         for rule in &self.config.expansions {
             if self.typed_buffer.ends_with(&rule.trigger) {
@@ -132,8 +153,12 @@ impl Engine {
                     "trigger detected (immediate): '{}' -> expansion fired",
                     rule.trigger
                 );
-                let mut actions = parse_expansion_actions(&rule.expansion)?;
-                self.execute_expansion(rule.trigger.chars().count(), &mut actions)?;
+                let actions = parse_expansion_actions(&rule.expansion)?;
+                self.dispatch_or_defer_expansion(
+                    self.typed_buffer.clone(),
+                    rule.trigger.chars().count(),
+                    actions,
+                )?;
                 break;
             }
         }
@@ -175,12 +200,47 @@ impl Engine {
 
                 let delete_count = rule.trigger.chars().count()
                     + usize::from(typed_boundary_char.is_some() || typed_boundary_key.is_some());
-                self.execute_expansion(delete_count, &mut actions)?;
+                self.dispatch_or_defer_expansion(self.typed_buffer.clone(), delete_count, actions)?;
                 break;
             }
         }
 
         Ok(())
+    }
+
+    fn dispatch_or_defer_expansion(
+        &mut self,
+        expected_buffer: String,
+        backspaces: usize,
+        mut actions: Vec<OutputAction>,
+    ) -> Result<()> {
+        if self.active_modifiers.any_active() {
+            self.pending_expansion = Some(PendingExpansion {
+                expected_buffer,
+                backspaces,
+                actions,
+            });
+            return Ok(());
+        }
+
+        self.pending_expansion = None;
+        self.execute_expansion(backspaces, &mut actions)
+    }
+
+    fn flush_pending_expansion_if_ready(&mut self) -> Result<()> {
+        if self.active_modifiers.any_active() {
+            return Ok(());
+        }
+
+        let Some(mut pending) = self.pending_expansion.take() else {
+            return Ok(());
+        };
+
+        if pending.expected_buffer != self.typed_buffer {
+            return Ok(());
+        }
+
+        self.execute_expansion(pending.backspaces, &mut pending.actions)
     }
 
     fn execute_expansion(
@@ -217,6 +277,26 @@ fn map_input_key_to_output_key(key: SpecialInputKey) -> Option<SpecialKey> {
         SpecialInputKey::Tab => Some(SpecialKey::Tab),
         _ => None,
     }
+}
+
+#[derive(Default)]
+struct ActiveModifiers {
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+    meta: bool,
+}
+
+impl ActiveModifiers {
+    fn any_active(&self) -> bool {
+        self.shift || self.ctrl || self.alt || self.meta
+    }
+}
+
+struct PendingExpansion {
+    expected_buffer: String,
+    backspaces: usize,
+    actions: Vec<OutputAction>,
 }
 
 #[cfg(test)]
@@ -264,6 +344,15 @@ mod tests {
     fn press_special(key: SpecialInputKey) -> KeyEvent {
         KeyEvent {
             kind: KeyEventKind::Press,
+            printable: None,
+            special: Some(key),
+            is_injected: false,
+        }
+    }
+
+    fn release_special(key: SpecialInputKey) -> KeyEvent {
+        KeyEvent {
+            kind: KeyEventKind::Release,
             printable: None,
             special: Some(key),
             is_injected: false,
@@ -321,6 +410,19 @@ mod tests {
             .handle_event(press_special(SpecialInputKey::Shift))
             .expect("event should work");
         engine.handle_event(press_char('@')).expect("event should work");
+
+        {
+            let backspaces = sink.backspaces.lock().expect("mutex poisoned");
+            assert!(backspaces.is_empty());
+        }
+        {
+            let actions = sink.actions.lock().expect("mutex poisoned");
+            assert!(actions.is_empty());
+        }
+
+        engine
+            .handle_event(release_special(SpecialInputKey::Shift))
+            .expect("event should work");
 
         let backspaces = sink.backspaces.lock().expect("mutex poisoned");
         assert_eq!(&*backspaces, &[3]);
