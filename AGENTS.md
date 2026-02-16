@@ -10,3 +10,7 @@
 
 ## Validation
 - Treat `nix build` as the required project-level verification step before finishing work.
+
+## Deployment
+- When asked to deploy or push, update the version in `Cargo.toml` and `flake.nix`.
+- Create a commit message and push to the main branch.

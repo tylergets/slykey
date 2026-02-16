@@ -20,12 +20,14 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command.unwrap_or(Commands::Run) {
-        Commands::Run => run(cli.config),
+        Commands::Run => run(cli.config, cli.debug),
         Commands::ValidateConfig => validate_config(cli.config),
     }
 }
 
-fn run(config_path_override: Option<std::path::PathBuf>) -> Result<()> {
+fn run(config_path_override: Option<std::path::PathBuf>, debug: bool) -> Result<()> {
+    println!("slykey v{}", env!("CARGO_PKG_VERSION"));
+
     let loaded = AppConfig::load(config_path_override)?;
     let config = loaded.config;
     config.validate()?;
@@ -38,6 +40,7 @@ fn run(config_path_override: Option<std::path::PathBuf>) -> Result<()> {
 
     let backend = Arc::new(X11RdevBackend::new()?);
     let mut engine = Engine::new(config);
+    engine.set_debug(debug);
     engine.set_output(backend.clone());
     let engine = std::sync::Mutex::new(engine);
 
