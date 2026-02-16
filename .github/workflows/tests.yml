@@ -20,6 +20,7 @@ jobs:
             libx11-dev \
             libxi-dev \
             libxtst-dev \
+            libxdo-dev \
             pkg-config
 
       - name: Setup Rust
