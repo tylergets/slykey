@@ -42,7 +42,7 @@
           // {
             inherit cargoArtifacts;
             pname = "slykey";
-            version = "0.1.2";
+            version = "0.1.3";
           }
         );
       in {

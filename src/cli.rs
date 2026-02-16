@@ -11,6 +11,10 @@ pub struct Cli {
     /// Optional explicit config path (overrides discovery; useful for Nix store paths).
     #[arg(short = 'c', long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
+
+    /// Enable debug logging for trigger matching internals.
+    #[arg(long, global = true)]
+    pub debug: bool,
 }
 
 #[derive(Debug, Clone, Subcommand)]

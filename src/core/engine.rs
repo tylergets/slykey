@@ -12,6 +12,7 @@ pub struct Engine {
     output: Option<Arc<dyn OutputSink>>,
     typed_buffer: String,
     max_trigger_chars: usize,
+    debug: bool,
 }
 
 impl Engine {
@@ -28,7 +29,12 @@ impl Engine {
             output: None,
             typed_buffer: String::new(),
             max_trigger_chars,
+            debug: false,
         }
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
     }
 
     pub fn set_output(&mut self, output: Arc<dyn OutputSink>) {
@@ -59,6 +65,7 @@ impl Engine {
     fn on_printable_char(&mut self, c: char) -> Result<()> {
         self.typed_buffer.push(c);
         self.truncate_buffer_if_needed();
+        self.log_possible_match_buffer();
 
         match self.config.match_behavior {
             MatchBehavior::Immediate => self.try_expand_immediate()?,
@@ -72,11 +79,38 @@ impl Engine {
         Ok(())
     }
 
+    fn log_possible_match_buffer(&self) {
+        if !self.debug {
+            return;
+        }
+
+        if self.find_possible_trigger_suffix().is_some() {
+            eprintln!("possible match buffer: {:?}", self.typed_buffer);
+        }
+    }
+
+    fn find_possible_trigger_suffix(&self) -> Option<&str> {
+        for (start, _) in self.typed_buffer.char_indices() {
+            let suffix = &self.typed_buffer[start..];
+            for rule in &self.config.expansions {
+                if rule.trigger.starts_with(suffix) {
+                    return Some(suffix);
+                }
+            }
+        }
+        None
+    }
+
     fn on_special_key(&mut self, key: SpecialInputKey) -> Result<()> {
         match key {
             SpecialInputKey::Backspace => {
                 self.typed_buffer.pop();
             }
+            SpecialInputKey::Shift
+            | SpecialInputKey::Ctrl
+            | SpecialInputKey::Alt
+            | SpecialInputKey::Meta
+            | SpecialInputKey::CapsLock => {}
             SpecialInputKey::Enter | SpecialInputKey::Tab => {
                 if self.config.match_behavior == MatchBehavior::Boundary {
                     self.try_expand_boundary(None, Some(key))?;
@@ -194,7 +228,7 @@ mod tests {
     use super::Engine;
     use crate::config::{AppConfig, ExpansionRule, MatchBehavior};
     use crate::core::expansion::OutputAction;
-    use crate::io::events::{KeyEvent, KeyEventKind};
+    use crate::io::events::{KeyEvent, KeyEventKind, SpecialInputKey};
     use crate::io::output::OutputSink;
 
     #[derive(Default)]
@@ -227,6 +261,15 @@ mod tests {
         }
     }
 
+    fn press_special(key: SpecialInputKey) -> KeyEvent {
+        KeyEvent {
+            kind: KeyEventKind::Press,
+            printable: None,
+            special: Some(key),
+            is_injected: false,
+        }
+    }
+
     fn test_config(match_behavior: MatchBehavior) -> AppConfig {
         AppConfig {
             expansions: vec![ExpansionRule {
@@ -255,6 +298,38 @@ mod tests {
         assert_eq!(actions[0].len(), 1);
         match &actions[0][0] {
             OutputAction::Text(text) => assert_eq!(text, "hello"),
+            _ => panic!("expected text output action"),
+        }
+    }
+
+    #[test]
+    fn immediate_mode_keeps_buffer_through_modifier_keys() {
+        let sink = Arc::new(RecordingSink::default());
+        let mut engine = Engine::new(AppConfig {
+            expansions: vec![ExpansionRule {
+                trigger: "tg@".to_string(),
+                expansion: "tylergetsay@gmail.com".to_string(),
+            }],
+            match_behavior: MatchBehavior::Immediate,
+            boundary_chars: None,
+        });
+        engine.set_output(sink.clone());
+
+        engine.handle_event(press_char('t')).expect("event should work");
+        engine.handle_event(press_char('g')).expect("event should work");
+        engine
+            .handle_event(press_special(SpecialInputKey::Shift))
+            .expect("event should work");
+        engine.handle_event(press_char('@')).expect("event should work");
+
+        let backspaces = sink.backspaces.lock().expect("mutex poisoned");
+        assert_eq!(&*backspaces, &[3]);
+
+        let actions = sink.actions.lock().expect("mutex poisoned");
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].len(), 1);
+        match &actions[0][0] {
+            OutputAction::Text(text) => assert_eq!(text, "tylergetsay@gmail.com"),
             _ => panic!("expected text output action"),
         }
     }

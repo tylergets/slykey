@@ -115,6 +115,11 @@ fn extract_single_char(s: &str) -> Option<char> {
 
 fn map_input_key(key: Key) -> SpecialInputKey {
     match key {
+        Key::ShiftLeft | Key::ShiftRight => SpecialInputKey::Shift,
+        Key::ControlLeft | Key::ControlRight => SpecialInputKey::Ctrl,
+        Key::Alt | Key::AltGr => SpecialInputKey::Alt,
+        Key::MetaLeft | Key::MetaRight => SpecialInputKey::Meta,
+        Key::CapsLock => SpecialInputKey::CapsLock,
         Key::Return => SpecialInputKey::Enter,
         Key::Tab => SpecialInputKey::Tab,
         Key::Backspace => SpecialInputKey::Backspace,
