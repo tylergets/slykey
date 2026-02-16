@@ -21,9 +21,9 @@ pub fn send_notification(summary: &str, body: &str) -> Result<()> {
             "org.freedesktop.Notifications",
             "Notify",
             (
-                "slykey",
+                "",
                 0u32,
-                "slykey",
+                "",
                 summary,
                 body,
                 actions,

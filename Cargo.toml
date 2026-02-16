@@ -1,6 +1,6 @@
 [package]
 name = "slykey"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 license = "MIT"
 
@@ -10,6 +10,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 dbus = "0.9"
 dirs = "6"
+emojis = "0.7"
 enigo = "0.2"
 gtk = "0.18.2"
 libappindicator = "0.9.0"

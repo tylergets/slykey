@@ -10,6 +10,7 @@ globals:
   signoff: "Thanks, Tyler{{KEY:ENTER}}"
   today: "{{DATE}} {{TIME}}"
   fortune: "{{CMD:fortune}}"
+  rocket: "{{EMOJI:rocket}}"
 
 expansions:
   - trigger: '$$fortune'
@@ -20,6 +21,8 @@ expansions:
     expansion: "tylergetsay@gmail.com"
   - trigger: "sig;"
     expansion: "{{signoff}}"
+  - trigger: "$$ship"
+    expansion: "Shipped {{rocket}}"
 
 snippets:
   - title: "Fortune"
@@ -30,3 +33,5 @@ snippets:
     content: "tylergetsay@gmail.com"
   - title: "Signature"
     content: "Thanks, Tyler"
+  - title: "Ship status"
+    content: "Shipped {{EMOJI:rocket}}"

@@ -14,8 +14,11 @@ use clap::Parser;
 use crate::cli::{Cli, Commands};
 use crate::config::AppConfig;
 use crate::core::engine::Engine;
+use crate::core::instance_lock::InstanceLock;
 #[cfg(target_os = "linux")]
 use crate::platform::app_indicator;
+#[cfg(target_os = "linux")]
+use crate::platform::dbus_notification;
 use crate::platform::x11_rdev::X11RdevBackend;
 
 fn main() -> Result<()> {
@@ -29,12 +32,15 @@ fn main() -> Result<()> {
 
 fn run(config_path_override: Option<std::path::PathBuf>, debug: bool) -> Result<()> {
     println!("slykey v{}", env!("CARGO_PKG_VERSION"));
+    let _instance_lock = InstanceLock::acquire()?;
 
     let loaded = AppConfig::load(config_path_override)?;
     let config_path = loaded.path.clone();
     let watch = loaded.config.watch;
     let config = loaded.config;
     config.validate()?;
+    #[cfg(target_os = "linux")]
+    let notify_on_expansion_error = config.notifications.on_expansion;
 
     println!("Loaded config from {}", config_path.display());
     println!("Listening on X11 backend (rdev)...");
@@ -64,6 +70,14 @@ fn run(config_path_override: Option<std::path::PathBuf>, debug: bool) -> Result<
         let mut guard = engine.lock().expect("engine mutex poisoned");
         if let Err(err) = guard.handle_event(event) {
             eprintln!("event handling error: {err}");
+            #[cfg(target_os = "linux")]
+            if notify_on_expansion_error {
+                if let Err(notification_err) =
+                    dbus_notification::send_notification("Expansion Error", &err.to_string())
+                {
+                    eprintln!("failed to send expansion error notification: {notification_err}");
+                }
+            }
         }
     })?;
 

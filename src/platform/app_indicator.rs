@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process;
 use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -87,6 +88,7 @@ fn run_indicator(
         menu.append(&separator);
         separator.show();
     }
+    let has_snippets = !snippets.is_empty();
 
     let globals = Arc::new(globals);
     let notify_on_snippet_copy = notifications.on_snippet_copy;
@@ -109,8 +111,7 @@ fn run_indicator(
             clipboard.store();
 
             if notify_on_snippet_copy {
-                let body = format!("Copied snippet: {}", title);
-                if let Err(err) = dbus_notification::send_notification("slykey", &body) {
+                if let Err(err) = dbus_notification::send_notification("Copied Snippet", &title) {
                     eprintln!("failed to send snippet notification: {err}");
                 }
             }
@@ -118,6 +119,17 @@ fn run_indicator(
         menu.append(&item);
         item.show();
     }
+
+    if has_snippets {
+        let separator = gtk::SeparatorMenuItem::new();
+        menu.append(&separator);
+        separator.show();
+    }
+
+    let quit_item = gtk::MenuItem::with_label("Quit");
+    quit_item.connect_activate(|_| process::exit(0));
+    menu.append(&quit_item);
+    quit_item.show();
 
     menu.show_all();
 

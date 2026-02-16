@@ -184,7 +184,7 @@ fn lookup_global_macro_case_insensitive<'a>(
 fn is_template_macro_with_argument(name: &str) -> bool {
     matches!(
         name.trim().to_ascii_uppercase().as_str(),
-        "CMD" | "COMMAND"
+        "CMD" | "COMMAND" | "EMOJI"
     )
 }
 
@@ -197,8 +197,31 @@ fn render_template_macro_with_argument(
     let normalized = name.to_ascii_uppercase();
     match normalized.as_str() {
         "CMD" | "COMMAND" => run_linux_command_macro(value, globals, resolving_stack),
+        "EMOJI" => render_emoji_macro(value, globals, resolving_stack),
         _ => bail!("unsupported macro: '{normalized}'"),
     }
+}
+
+fn render_emoji_macro(
+    shortcode: &str,
+    globals: &HashMap<String, String>,
+    resolving_stack: &mut Vec<String>,
+) -> Result<String> {
+    let rendered_shortcode = render_template_macros_internal(shortcode, globals, resolving_stack)?;
+    let normalized_shortcode = rendered_shortcode.trim().trim_matches(':').to_ascii_lowercase();
+    let lookup_candidates = [
+        normalized_shortcode.clone(),
+        normalized_shortcode.replace('-', "_"),
+        normalized_shortcode.replace('-', ""),
+    ];
+    let emoji = lookup_candidates
+        .iter()
+        .find_map(|candidate| emojis::get_by_shortcode(candidate));
+    let Some(emoji) = emoji else {
+        bail!("unknown emoji shortcode: '{normalized_shortcode}'");
+    };
+
+    Ok(emoji.as_str().to_string())
 }
 
 fn run_linux_command_macro(
@@ -440,6 +463,27 @@ mod tests {
         let rendered = render_template_macros("{{CMD:printf hello}}", &no_globals())
             .expect("command macro should render");
         assert_eq!(rendered, "hello");
+    }
+
+    #[test]
+    fn renders_emoji_macro_output() {
+        let rendered = render_template_macros("Ship it {{EMOJI:rocket}}", &no_globals())
+            .expect("emoji macro should render");
+        assert_eq!(rendered, "Ship it 🚀");
+    }
+
+    #[test]
+    fn renders_emoji_macro_with_dash_shortcode() {
+        let rendered = render_template_macros("{{EMOJI:thumbs-up}}", &no_globals())
+            .expect("emoji macro should render");
+        assert_eq!(rendered, "👍");
+    }
+
+    #[test]
+    fn rejects_unknown_emoji_shortcode() {
+        let err = render_template_macros("{{EMOJI:not-a-real-emoji}}", &no_globals())
+            .expect_err("unknown emoji shortcode should fail");
+        assert!(err.to_string().contains("unknown emoji shortcode"));
     }
 
     #[test]

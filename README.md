@@ -11,7 +11,7 @@ It listens globally for trigger strings and replaces them with configured expans
 - Global trigger detection on X11
 - YAML-based expansion config
 - Expansion action macros (keys, delays, caret movement)
-- Template macros for datetime (`DATETIME`, `DATE`, `TIME`) and Linux commands (`CMD`)
+- Template macros for datetime (`DATETIME`, `DATE`, `TIME`), Linux commands (`CMD`), and emoji shortcodes (`EMOJI`)
 - Configurable global template macros (`globals`)
 - Nix flake packaging
 - Home Manager module with declarative expansions
@@ -94,16 +94,21 @@ notifications: # optional desktop notifications via D-Bus
 globals: # optional template macro definitions
   SIGNOFF: "Thanks, Tyler{{KEY:ENTER}}"
   TODAY_NOTE: "Generated on {{DATE}}"
+  ROCKET: "{{EMOJI:rocket}}"
 expansions:
   - trigger: "tg@"
     expansion: "tylergetsay@gmail.com"
   - trigger: "sig;"
     expansion: "{{SIGNOFF}}"
+  - trigger: "ship;"
+    expansion: "Shipped {{ROCKET}}"
 snippets: # optional tray menu clipboard items
   - title: "Personal email"
     content: "tylergetsay@gmail.com"
   - title: "Address"
     content: "123 Main St ({{TODAY_NOTE}})"
+  - title: "Ship status"
+    content: "Shipped {{EMOJI:rocket}}"
 ```
 
 ### Expansion action macros
@@ -145,6 +150,7 @@ Template macros work in `expansion`, `snippets[].content`, and `globals` values:
 - `{{DATE}}` -> local date (`YYYY-MM-DD`)
 - `{{TIME}}` -> local time (`HH:MM:SS`)
 - `{{CMD:<linux shell command>}}` -> command stdout with trailing newlines trimmed
+- `{{EMOJI:<emoji-shortcode>}}` -> emoji character (for example `{{EMOJI:rocket}}` -> `🚀`)
 
 `globals` entries become new template macros. Macro names are case-insensitive and can reference other globals, e.g. `{{SIGNOFF}}` or `{{today_note}}`.
 
@@ -153,6 +159,7 @@ Examples:
 - `Meeting on {{DATE}} at {{TIME}}`
 - `Generated {{DATETIME}}`
 - `Git branch: {{CMD:git branch --show-current}}`
+- `Shipped {{EMOJI:rocket}}`
 - `globals: { SIGNOFF: "Thanks, Tyler{{KEY:ENTER}}" }`
 
 ## Home Manager module

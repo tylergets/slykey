@@ -50,7 +50,7 @@
           // {
             inherit cargoArtifacts;
             pname = "slykey";
-            version = "0.2.2";
+            version = "0.2.3";
             postFixup = ''
               wrapProgram "$out/bin/slykey" \
                 --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath [

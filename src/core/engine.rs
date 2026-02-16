@@ -172,7 +172,7 @@ impl Engine {
                     self.typed_buffer.clone(),
                     rule.trigger.chars().count(),
                     actions,
-                    Some(format!("Expanded {}", rule.trigger)),
+                    Some(rule.trigger.clone()),
                 )?;
                 break;
             }
@@ -219,7 +219,7 @@ impl Engine {
                     self.typed_buffer.clone(),
                     delete_count,
                     actions,
-                    Some(format!("Expanded {}", rule.trigger)),
+                    Some(rule.trigger.clone()),
                 )?;
                 break;
             }
@@ -283,7 +283,7 @@ impl Engine {
         #[cfg(target_os = "linux")]
         if self.config.notifications.on_expansion {
             if let Some(body) = notification_body {
-                if let Err(err) = dbus_notification::send_notification("slykey", body) {
+                if let Err(err) = dbus_notification::send_notification("Text Expanded", body) {
                     eprintln!("failed to send expansion notification: {err}");
                 }
             }

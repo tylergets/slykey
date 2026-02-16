@@ -100,6 +100,7 @@ in {
       description = "Template macro globals, keyed by macro name.";
       example = {
         SIGNOFF = "Thanks, Tyler{{KEY:ENTER}}";
+        ROCKET = "{{EMOJI:rocket}}";
       };
     };
 
