@@ -39,8 +39,6 @@ fn run(config_path_override: Option<std::path::PathBuf>, debug: bool) -> Result<
     let watch = loaded.config.watch;
     let config = loaded.config;
     config.validate()?;
-    #[cfg(target_os = "linux")]
-    let notify_on_expansion_error = config.notifications.on_expansion;
 
     println!("Loaded config from {}", config_path.display());
     println!("Listening on X11 backend (rdev)...");
@@ -71,12 +69,10 @@ fn run(config_path_override: Option<std::path::PathBuf>, debug: bool) -> Result<
         if let Err(err) = guard.handle_event(event) {
             eprintln!("event handling error: {err}");
             #[cfg(target_os = "linux")]
-            if notify_on_expansion_error {
-                if let Err(notification_err) =
-                    dbus_notification::send_notification("Expansion Error", &err.to_string())
-                {
-                    eprintln!("failed to send expansion error notification: {notification_err}");
-                }
+            if let Err(notification_err) =
+                dbus_notification::send_notification("Expansion Error", &err.to_string())
+            {
+                eprintln!("failed to send expansion error notification: {notification_err}");
             }
         }
     })?;
