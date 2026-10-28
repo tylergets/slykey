@@ -1,6 +1,7 @@
-use std::env;
-use std::fs;
 use std::collections::HashMap;
+use std::env;
+use std::ffi::CString;
+use std::fs;
 use std::path::PathBuf;
 use std::process;
 use std::sync::mpsc::{self, Sender};
@@ -9,7 +10,6 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use gtk::prelude::*;
-use libappindicator::{AppIndicator as LibAppIndicator, AppIndicatorStatus};
 
 use crate::config::{MenuSnippet, NotificationConfig};
 use crate::core::expansion::render_template_macros;
@@ -73,11 +73,24 @@ fn run_indicator(
     }
 
     let tray_icon_name = install_bundled_icon().unwrap_or("input-keyboard");
-    let mut indicator = LibAppIndicator::new("slykey", tray_icon_name);
-    indicator.set_title("slykey");
-    indicator.set_status(AppIndicatorStatus::Active);
+    let id = CString::new("slykey").expect("static id");
+    let icon = CString::new(tray_icon_name).expect("icon name has no NUL");
+    // Raw API so sni_reregister can reach the GObject. Lives for the rest of the process.
+    let indicator = unsafe {
+        let indicator = libappindicator::app_indicator_new(
+            id.as_ptr(),
+            icon.as_ptr(),
+            libappindicator::AppIndicatorCategory_APP_INDICATOR_CATEGORY_APPLICATION_STATUS,
+        );
+        libappindicator::app_indicator_set_title(indicator, id.as_ptr());
+        libappindicator::app_indicator_set_status(
+            indicator,
+            libappindicator::AppIndicatorStatus_APP_INDICATOR_STATUS_ACTIVE,
+        );
+        indicator
+    };
 
-    let mut menu = gtk::Menu::new();
+    let menu = gtk::Menu::new();
     let running_item = gtk::MenuItem::with_label("Running");
     running_item.set_sensitive(false);
     menu.append(&running_item);
@@ -133,7 +146,8 @@ fn run_indicator(
 
     menu.show_all();
 
-    indicator.set_menu(&mut menu);
+    unsafe { libappindicator::app_indicator_set_menu(indicator, menu.as_ptr()) };
+    crate::platform::sni_reregister::keep_registered(indicator);
     let _ = ready_tx.send(Ok(()));
 
     gtk::main();
